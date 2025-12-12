@@ -26,3 +26,19 @@ class LoginRequest(BaseModel):
     """Login request model"""
     username: str
     password: str
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: str
+    full_name: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "username": "newuser",
+                "password": "securepassword123",
+                "email": "user@example.com",
+                "full_name": "New User"
+            }
+        }

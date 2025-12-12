@@ -3,10 +3,12 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
+from app.auth.models import User
 from app.domain.aggregates import Booking
 from app.domain.entities import BookingItem
+from app.domain.value_objects import BookingStatus, BookingStatusEnum
 from app.infrastructure.in_memory_repository import repository
-from app.auth.dependencies import get_current_user, verify_booking_ownership
+from app.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/bookings", tags=["Bookings"])
 
@@ -48,17 +50,20 @@ class CancelResponse(BaseModel):
     booking_id: str
 
 
+# ============================================================================
+# CREATE BOOKING
+# ============================================================================
 @router.post("/", response_model=BookingResponse)
 def create_booking(
     request: CreateBookingRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Create new booking with seat reservation.
     Requires authentication - user_id is extracted from JWT token.
     """
-    # Get user_id from token (not from request body anymore!)
-    user_id = current_user["user_id"]
+    # Get user_id from User object
+    user_id = current_user.user_id
     
     # Get showtime
     showtime = repository.get_showtime(request.showtime_id)
@@ -84,7 +89,7 @@ def create_booking(
     
     booking = Booking(
         booking_id=booking_id,
-        user_id=user_id,  # From token
+        user_id=user_id,
         showtime_id=request.showtime_id,
         created_at=datetime.now(),
         total_price=total_price
@@ -117,14 +122,17 @@ def create_booking(
         hold_expiry_time=booking.hold_expiry.expiry_time.isoformat(),
         created_at=booking.created_at.isoformat(),
         seat_ids=request.seat_ids,
-        message=f"Booking successful! Please complete payment within {remaining_minutes} minutes to confirm your booking. Your seats are temporarily reserved."
+        message=f"Booking successful! Please complete payment within {remaining_minutes} minutes to confirm your booking."
     )
 
 
+# ============================================================================
+# CONFIRM PAYMENT
+# ============================================================================
 @router.post("/confirm-payment", response_model=TicketResponse)
 def confirm_payment(
     request: ConfirmPaymentRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Confirm payment and issue ticket.
@@ -134,8 +142,9 @@ def confirm_payment(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     
-    # Verify ownership
-    verify_booking_ownership(booking.user_id, current_user)
+    # Verify ownership - CONSISTENT ownership check
+    if booking.user_id != current_user.user_id:   
+        raise HTTPException(status_code=403, detail="Not authorized to access this booking")
     
     # Check if expired
     if booking.check_hold_expiry():
@@ -165,18 +174,20 @@ def confirm_payment(
         qr_code=ticket.qr_code,
         issued_at=ticket.issued_at.isoformat(),
         is_valid=ticket.is_valid,
-        message="Payment confirmed successfully! Your ticket has been issued. Please save your QR code for check-in."
+        message="Payment confirmed successfully! Your ticket has been issued."
     )
 
 
-# IMPORTANT: /me must come BEFORE /{booking_id} to avoid path matching conflict
+# ============================================================================
+# GET MY BOOKINGS
+# ============================================================================
 @router.get("/me", response_model=List[BookingResponse])
-def get_my_bookings(current_user: dict = Depends(get_current_user)):
+def get_my_bookings(current_user: User = Depends(get_current_user)):
     """
     Get all bookings for the authenticated user.
     Requires authentication - returns bookings for current user only.
     """
-    user_id = current_user["user_id"]
+    user_id = current_user.user_id
     
     all_bookings = repository.get_all_bookings()
     user_bookings = [b for b in all_bookings if b.user_id == user_id]
@@ -220,10 +231,13 @@ def get_my_bookings(current_user: dict = Depends(get_current_user)):
     return result
 
 
+# ============================================================================
+# GET BOOKING BY ID
+# ============================================================================
 @router.get("/{booking_id}", response_model=BookingResponse)
 def get_booking(
     booking_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get booking details.
@@ -233,8 +247,9 @@ def get_booking(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     
-    # Verify ownership
-    verify_booking_ownership(booking.user_id, current_user)
+    # Verify ownership - CONSISTENT
+    if booking.user_id != current_user.user_id:   
+        raise HTTPException(status_code=403, detail="Not authorized to access this booking")
     
     seat_ids = [item.seat_id for item in booking.get_booking_items()]
     
@@ -269,35 +284,47 @@ def get_booking(
     )
 
 
-@router.delete("/{booking_id}", response_model=CancelResponse)
+# ============================================================================
+# CANCEL BOOKING
+# ============================================================================
+@router.delete("/{booking_id}")
 def cancel_booking(
     booking_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    """
-    Cancel booking with refund.
-    Requires authentication and booking ownership.
-    """
+    """Cancel a booking with refund calculation based on cancellation policy"""
     booking = repository.get_booking(booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     
-    # Verify ownership
-    verify_booking_ownership(booking.user_id, current_user)
+    # Ownership check - CONSISTENT
+    if booking.user_id != current_user.user_id:   
+        raise HTTPException(status_code=403, detail="Not authorized to cancel this booking")
     
+    # Get showtime untuk refund calculation
+    showtime = repository.get_showtime(booking.showtime_id)
+    if not showtime:
+        raise HTTPException(status_code=404, detail="Showtime not found")
+    
+    # Parse showtime datetime dari TimeSlot
+    showtime_datetime = datetime.strptime(
+        f"{showtime.time_slot._date} {showtime.time_slot._start_time}",
+        "%Y-%m-%d %H:%M"
+    )
+    
+    # Cancel booking dengan refund calculation
     try:
-        refund_amount = booking.cancel_booking()
+        refund_amount = booking.cancel_booking(showtime_datetime)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # Release seats in showtime
-    showtime = repository.get_showtime(booking.showtime_id)
-    if showtime:
-        seat_ids = [item.seat_id for item in booking.get_booking_items()]
-        showtime.release_seats(seat_ids)
+    # Release seats back to showtime
+    seat_ids = [item.seat_id for item in booking.get_booking_items()]
+    showtime.release_seats(seat_ids)
     
-    return CancelResponse(
-        message="Booking cancelled successfully. Refund will be processed according to cancellation policy.",
-        refund_amount=str(refund_amount),
-        booking_id=booking_id
-    )
+    return {
+        "message": "Booking cancelled successfully",
+        "refund_amount": float(refund_amount),
+        "booking_id": booking_id,
+        "status": booking.booking_status.value.value
+    }

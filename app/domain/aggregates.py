@@ -44,25 +44,44 @@ class Showtime:
     
     def validate_no_single_seat_gap(self, seat_ids: List[str]) -> bool:
         """
-        Prevent single-seat gap business rule
-        Returns True if booking is valid (no single gaps created)
+        Cegah booking yang membuat single-seat gap.
+        Contoh: Jika pilih A1 dan A3, maka A2 jadi gap (TIDAK BOLEH)
         """
-        # Simplified validation - in real system, check adjacent seats
+        # Parse seat numbers (asumsi format: SEAT_SCR1_A1 -> row A, col 1)
+        selected_seats = []
+        for seat_id in seat_ids:
+            seat = next((s for s in self._seats if s.seat_id == seat_id), None)
+            if seat:
+                row = seat.seat_number._row
+                col = seat.seat_number._column
+                selected_seats.append({'row': row, 'col': col, 'seat_id': seat_id})
+        
+        # Sort by row, then column
+        selected_seats.sort(key=lambda x: (x['row'], x['col']))
+        
+        # Check for single-seat gaps
+        for i in range(len(selected_seats) - 1):
+            current = selected_seats[i]
+            next_seat = selected_seats[i + 1]
+            
+            # If same row and gap = 2 (misal: A1 ke A3), berarti ada A2 terjepit
+            if (current['row'] == next_seat['row'] and 
+                next_seat['col'] - current['col'] == 2):
+                return False  # Ada single-seat gap!
+        
         return True
     
     def reserve_seats(self, seat_ids: List[str]) -> None:
-        """Reserve seats for booking"""
         if not self.check_seat_availability(seat_ids):
             raise ValueError("One or more seats are not available")
         
         if not self.validate_no_single_seat_gap(seat_ids):
-            raise ValueError("Booking would create single-seat gap")
+            raise ValueError("Booking would create a single-seat gap")
         
         for seat_id in seat_ids:
             seat = next((s for s in self._seats if s.seat_id == seat_id), None)
             if seat:
                 seat.reserve()
-        
         self.available_seats -= len(seat_ids)
     
     def confirm_seats(self, seat_ids: List[str]) -> None:
@@ -129,19 +148,32 @@ class Booking:
         
         self.booking_status = BookingStatus(BookingStatusEnum.CONFIRMED)
     
-    def cancel_booking(self) -> Decimal:
+    def cancel_booking(self, showtime_datetime: datetime) -> Decimal:
         """
-        Cancel booking with refund calculation
-        Returns refund amount based on cancellation policy
+        Cancel booking dengan refund policy:
+        - H-24 atau lebih: 100% refund
+        - H-12 hingga H-24: 50% refund  
+        - Kurang dari H-12: 0% refund (no refund)
         """
-        if self.booking_status.is_confirmed():
-            # Calculate refund based on time until showtime
-            # Simplified: return full amount for now
-            refund_amount = self.total_price
-            self.booking_status = BookingStatus(BookingStatusEnum.CANCELLED)
-            return refund_amount
+        if not self.booking_status.is_confirmed():
+            raise ValueError("Can only cancel confirmed bookings")
         
-        raise ValueError("Can only cancel confirmed bookings")
+        # Calculate hours until showtime
+        now = datetime.now()
+        hours_until_show = (showtime_datetime - now).total_seconds() / 3600
+        
+        # Determine refund percentage
+        if hours_until_show >= 24:
+            refund_percentage = 1.0  # 100%
+        elif hours_until_show >= 12:
+            refund_percentage = 0.5  # 50%
+        else:
+            refund_percentage = 0.0  # No refund
+        
+        refund_amount = self.total_price * Decimal(str(refund_percentage))
+        self.booking_status = BookingStatus(BookingStatusEnum.CANCELLED)
+        
+        return refund_amount
     
     def check_hold_expiry(self) -> bool:
         """Check if hold has expired"""
