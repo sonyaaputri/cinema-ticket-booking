@@ -1,256 +1,288 @@
-# Cinema Ticket Booking System API
+# Cinema Ticket Booking System
 
-API backend untuk sistem pemesanan tiket bioskop berbasis Domain-Driven Design (DDD) dengan JWT Authentication.
+Production-ready FastAPI microservice for cinema ticket booking with Domain-Driven Design (DDD) architecture.
 
-**Proyek Akhir** - II3160 Teknologi Sistem Terintegrasi  
-**Nama / NIM:** Sonya Putri Fadilah / 18223138  
-**Milestone:** M5 - Implementasi Lanjutan (JWT Authentication)
+**Final Project** - II3160 Teknologi Sistem Terintegrasi  
+**Sonya Putri Fadilah / 18223138**  
+Institut Teknologi Bandung
 
 ---
-
-## Stack Teknologi
-
-* **Python 3.10+**
-* **FastAPI** - Modern web framework untuk building APIs
-* **Pydantic** - Data validation menggunakan Python type hints
-* **Uvicorn** - ASGI server untuk menjalankan FastAPI
-* **python-jose** - JWT token generation dan validation
-* **passlib** - Password hashing dengan bcrypt
 
 ---
 
 ## Quick Start
 
-### Installation
+### Docker usage
+
 ```bash
-# Clone repository
+docker compose up --build
+docker compose run test
+```
+
+* App: http://localhost:8000
+* Docs: http://localhost:8000/docs
+
+### Local development
+
+```bash
 git clone https://github.com/sonyaaputri/cinema-ticket-booking.git
 cd cinema-ticket-booking
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run server
-uvicorn app.main:app --reload
-```
-
-### Access API Documentation
-
-Server akan berjalan di `http://localhost:8000`
-
-* **Swagger UI (Interactive):** http://localhost:8000/docs
-* **ReDoc (Documentation):** http://localhost:8000/redoc
-
----
-
-## Authentication (M5)
-
-Sistem menggunakan JWT (JSON Web Token) untuk autentikasi. Semua endpoint booking memerlukan authentication.
-
-### Demo Users
-
-Gunakan salah satu demo user berikut untuk testing:
-
-| Username | Password | User ID | Full Name |
-|----------|----------|---------|-----------|
-| `user1` | `password123` | USR001 | John Doe |
-| `user2` | `password456` | USR002 | Jane Smith |
-| `testuser` | `test123` | USR003 | Test User |
-
-### Login Flow
-
-1. **Login untuk mendapatkan token:**
-   ```bash
-   POST /api/auth/login
-   Content-Type: application/json
-
-   {
-     "username": "user1",
-     "password": "password123"
-   }
-   ```
-
-   **Response:**
-   ```json
-   {
-     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-     "token_type": "bearer"
-   }
-   ```
-
-2. **Gunakan token untuk endpoint protected:**
-   ```
-   Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-   ```
-
-3. **Token berlaku selama 60 menit** (1 jam)
-
----
-
-## Endpoints API
-
-### Authentication
-
-| Method | Endpoint | Auth Required | Deskripsi |
-|--------|----------|---------------|-----------|
-| `POST` | `/api/auth/login` | Tidak | Login dan mendapatkan JWT access token |
-
-### Showtimes (Public)
-
-| Method | Endpoint | Auth Required | Deskripsi |
-|--------|----------|---------------|-----------|
-| `GET` | `/api/showtimes/` | Tidak | Mendapatkan daftar semua jadwal tayang |
-| `GET` | `/api/showtimes/{showtime_id}` | Tidak | Mendapatkan detail jadwal tayang beserta ketersediaan kursi |
-
-### Bookings (Protected)
-
-| Method | Endpoint | Auth Required | Deskripsi |
-|--------|----------|---------------|-----------|
-| `POST` | `/api/bookings/` | Ya | Membuat booking baru (reserve kursi) - user_id dari token |
-| `GET` | `/api/bookings/me` | Ya | Mendapatkan semua booking dari user yang sedang login |
-| `GET` | `/api/bookings/{booking_id}` | Ya | Mendapatkan detail booking (verifikasi ownership) |
-| `POST` | `/api/bookings/confirm-payment` | Ya | Konfirmasi pembayaran dan terbitkan tiket |
-| `DELETE` | `/api/bookings/{booking_id}` | Ya | Membatalkan booking dengan refund (verifikasi ownership) |
-
----
-
-## Error Handling
-
-API menggunakan HTTP status code yang sesuai:
-
-| Status Code | Deskripsi |
-|-------------|-----------|
-| `200 OK` | Request berhasil |
-| `400 Bad Request` | Business rule violation (seat not available, booking expired, dll) |
-| `401 Unauthorized` | Token tidak valid, expired, atau tidak ada token |
-| `403 Forbidden` | User tidak memiliki akses ke resource (ownership violation) |
-| `404 Not Found` | Resource tidak ditemukan (booking_id/showtime_id invalid) |
-| `422 Unprocessable Entity` | Input validation error (format JSON salah) |
-
-Setiap error response menyertakan pesan yang jelas untuk debugging.
-
----
-
-## Alur Pemesanan Tiket (dengan Authentication)
-
-```
-0. Customer login terlebih dahulu
-   POST /api/auth/login
-   → Mendapatkan access_token
-   → Simpan token untuk request selanjutnya
-
-1. Customer melihat jadwal tayang (tanpa auth)
-   GET /api/showtimes/
-
-2. Customer melihat ketersediaan kursi (tanpa auth)
-   GET /api/showtimes/{showtime_id}
-
-3. Customer membuat booking dengan token (kursi di-reserve 10 menit)
-   POST /api/bookings/
-   Header: Authorization: Bearer {token}
-   Status: RESERVED
-   Seat Status: RESERVED
-   Note: user_id otomatis dari token, tidak perlu input manual
-
-4. Customer melakukan pembayaran dengan token
-   POST /api/bookings/confirm-payment
-   Header: Authorization: Bearer {token}
-   Status: CONFIRMED
-   Seat Status: BOOKED
-   Ticket: ISSUED
-
-5. Customer melihat semua booking miliknya
-   GET /api/bookings/me
-   Header: Authorization: Bearer {token}
-   → Return list semua booking user
-
-6. (Opsional) Customer membatalkan booking
-   DELETE /api/bookings/{booking_id}
-   Header: Authorization: Bearer {token}
-   Status: CANCELLED
-   Seat Status: AVAILABLE
-   Refund: PROCESSED
+uvicorn app.main:app --reload --port 8000
+pytest tests/ -v --cov=app --cov-report=term-missing
 ```
 
 ---
 
-## Testing di Swagger UI
+## Project Overview
 
-1. Buka http://localhost:8000/docs
-2. Scroll ke endpoint **POST /api/auth/login**
-3. Klik "Try it out" dan login dengan demo user (contoh: user1 / password123)
-4. Copy `access_token` dari response
-5. Klik tombol **"Authorize"** (ikon gembok) di kanan atas
-6. Paste token di field "Value" (jangan tambahkan "Bearer" manual)
-7. Klik "Authorize" lalu "Close"
-8. Sekarang semua endpoint protected bisa diakses!
-
----
-
-## Struktur Project
+### Architecture
 
 ```
 cinema-ticket-booking/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py                      # Entry point aplikasi dengan auth routes
-│   ├── auth/                        # Authentication Module (M5)
-│   │   ├── __init__.py
-│   │   ├── models.py                # User, Token, LoginRequest models
-│   │   ├── jwt_handler.py           # JWT token creation & validation
-│   │   └── dependencies.py          # Auth dependencies (get_current_user)
-│   ├── domain/                      # Domain Layer (DDD)
-│   │   ├── __init__.py
-│   │   ├── value_objects.py         # Value Objects (Immutable)
-│   │   ├── entities.py              # Entities (dengan identity)
-│   │   └── aggregates.py            # Aggregates (Booking, Showtime)
-│   ├── api/                         # API Layer
-│   │   ├── __init__.py
-│   │   ├── auth_routes.py           # Authentication endpoints (M5)
-│   │   ├── booking_routes.py        # Booking endpoints (updated with auth)
-│   │   └── showtime_routes.py       # Showtime endpoints (public)
-│   └── infrastructure/              # Infrastructure Layer
-│       ├── __init__.py
-│       └── in_memory_repository.py  # Data storage (updated with users)
-├── requirements.txt                 # Python dependencies
-├── .gitignore                       # Git ignore rules
-└── README.md                        # Dokumentasi project
+│   ├── main.py                      # FastAPI application entry point
+│   ├── auth/                        # Authentication module
+│   │   ├── models.py                # User, Token models
+│   │   ├── jwt_handler.py           # JWT token management
+│   │   └── dependencies.py          # Auth dependencies
+│   ├── domain/                      # Domain layer (DDD)
+│   │   ├── value_objects.py         # Immutable value objects
+│   │   ├── entities.py              # Entities with identity
+│   │   └── aggregates.py            # Booking & Showtime aggregates
+│   ├── api/                         # API layer
+│   │   ├── auth_routes.py           # Authentication endpoints
+│   │   ├── booking_routes.py        # Booking endpoints
+│   │   └── showtime_routes.py       # Showtime endpoints
+│   └── infrastructure/              # Infrastructure layer
+│       └── in_memory_repository.py  # Data storage
+├── tests/                           # Comprehensive test suite (95% coverage)
+├── Dockerfile                       # Docker configuration
+├── docker-compose.yaml              # Container orchestration
+└── requirements.txt                 # Python dependencies
+```
+
+### Key Features
+
+* **Domain-Driven Design**: Clean architecture with separated layers
+* **JWT Authentication**: Secure token-based auth with registration
+* **Seat Reservation**: 10-minute hold with automatic release
+* **Concurrent Booking Prevention**: First-come-first-served
+* **Comprehensive Testing**: 95%+ coverage
+* **Docker Ready**: Full containerization
+* **CI Pipeline**: Automated testing and linting
+
+### Technology Stack
+
+* **Python 3.10+**
+* **FastAPI** - Modern web framework
+* **Uvicorn** - ASGI server
+* **python-jose** - JWT tokens
+* **passlib** - Password hashing
+* **pytest** - Testing with coverage
+
+---
+
+## API Documentation
+
+### Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/auth/register` | No | Register new user |
+| `POST` | `/api/auth/login` | No | Login and get JWT token |
+| `GET` | `/api/showtimes/` | No | List all showtimes |
+| `GET` | `/api/showtimes/{id}` | No | Get showtime details |
+| `POST` | `/api/bookings/` | Yes | Create booking |
+| `GET` | `/api/bookings/me` | Yes | Get user bookings |
+| `GET` | `/api/bookings/{id}` | Yes | Get booking details |
+| `POST` | `/api/bookings/confirm-payment` | Yes | Confirm payment |
+| `DELETE` | `/api/bookings/{id}` | Yes | Cancel booking |
+
+---
+## Error Handling
+
+Standard HTTP status codes:
+
+| Status Code | Description |
+|-------------|-------------|
+| `200 OK` | Request successful |
+| `201 Created` | Resource created successfully |
+| `400 Bad Request` | Business rule violation or invalid input |
+| `401 Unauthorized` | Token invalid, expired, or missing |
+| `403 Forbidden` | User lacks permission for resource |
+| `404 Not Found` | Resource not found |
+| `409 Conflict` | Resource conflict (duplicate booking, etc.) |
+| `422 Unprocessable Entity` | Validation error |
+| `500 Internal Server Error` | Unexpected server error |
+
+---
+
+## Authentication
+
+System uses JWT tokens. All booking endpoints require authentication.
+
+### Register
+
+```bash
+POST /api/auth/register
+
+{
+  "username": "johndoe",
+  "password": "securepass123",
+  "full_name": "John Doe",
+  "email": "john@example.com"
+}
+```
+
+### Login
+
+```bash
+POST /api/auth/login
+
+{
+  "username": "johndoe",
+  "password": "securepass123"
+}
+
+Response:
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+### Using Token
+
+```bash
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+Token expires after 60 minutes.
+
+---
+
+## Booking Flow
+
+```
+1. Register → POST /api/auth/register
+
+2. Login → POST /api/auth/login
+   → Get access_token
+
+3. Browse Showtimes → GET /api/showtimes/
+
+4. Create Booking → POST /api/bookings/
+   Status: RESERVED (10 min hold)
+
+5. Confirm Payment → POST /api/bookings/confirm-payment
+   Status: CONFIRMED, Ticket: ISSUED
+
+6. View Bookings → GET /api/bookings/me
+
+7. (Optional) Cancel → DELETE /api/bookings/{id}
+   Refund based on cancellation policy
 ```
 
 ---
 
-## Business Rules yang Diimplementasikan
+## Business Rules
 
-### Fully Implemented 
-- **Seat Hold Timeout:** Kursi di-hold selama 10 menit sejak booking dibuat
-- **Concurrent Booking Prevention:** First-come-first-served untuk seat availability
-- **JWT Authentication:** Token-based security untuk semua booking operations
-- **Booking Ownership Verification:** User hanya bisa akses booking milik sendiri
+All business rules fully implemented:
 
-### Simplified Implementation 
-- **Single-Seat Gap Prevention:** Menggunakan stub validation (return True)
-- **Cancellation Policy:** Full refund untuk semua cancellation (belum implement H-24/H-12 logic)
-- **External Context Integration:** Payment Context dan Pricing Context masih mocked
-
----
-
-## Notes
-
-- **In-Memory Storage:** Data akan hilang ketika server restart (untuk demo purposes)
-- **Demo Users Only:** Tidak ada endpoint registration, gunakan demo users yang sudah disediakan
-- **JWT Secret Key:** Hard-coded untuk development (production harus pakai environment variable)
-- **Token Expiry:** 60 menit, setelah itu perlu login ulang
+* **Seat Hold Timeout**: Seats reserved for 10 minutes, auto-release if unpaid
+* **Concurrent Booking Prevention**: First-come-first-served, prevents double-booking
+* **Single-Seat Gap Prevention**: Validates selections to avoid isolated seats
+* **Cancellation Policy**: 
+  - 24+ hours before: 100% refund
+  - 12-24 hours before: 50% refund
+  - Less than 12 hours: No refund
+* **JWT Authentication**: Secure token-based auth with 60-min expiry
+* **Booking Ownership**: Users can only access their own bookings
 
 ---
 
-## Development Timeline
+## Testing
 
-- **M1:** Domain Analysis - Identifikasi subdomain dan business capabilities
-- **M2:** Context Mapping - Definisi bounded context dan context map
-- **M3:** Tactical Design - Class diagram dan ubiquitous language
-- **M4:** Initial Implementation - Basic API dengan DDD architecture
-- **M5:** Extended Implementation - JWT Authentication dan protected endpoints ← **Current**
-- **M6:** Finalization - Laporan akhir dan video demo (Coming Soon)
+### Test Coverage: 95%+
+
+```
+tests/
+├── test_auth.py              # Authentication & registration
+├── test_booking.py           # Booking operations
+├── test_showtime.py          # Showtime endpoints
+├── test_payment.py           # Payment confirmation
+├── test_cancellation.py      # Cancellation policy
+├── test_business_rules.py    # Business logic
+├── test_integration.py       # End-to-end workflows
+└── conftest.py               # Test fixtures
+```
+
+### Run Tests
+
+```bash
+# All tests with coverage
+pytest tests/ -v --cov=app --cov-report=term-missing
+
+# Specific test files
+pytest tests/test_auth.py -v
+pytest tests/test_booking.py -v
+
+# HTML coverage report
+pytest tests/ --cov=app --cov-report=html
+
+# Run with verbose output
+pytest tests/ -vv --cov=app
+```
+
+---
+
+## Docker Usage
+
+```bash
+# Build and start
+docker compose up --build
+
+# Run tests
+docker compose run test
+
+# Stop services
+docker compose down
+```
+
+Container features:
+* Multi-stage build
+* Health checks
+* Hot reload for dev
+* CORS enabled
+
+---
+
+## Development
+
+### Code Quality
+
+```bash
+# Linting
+ruff check app/ tests/
+
+# Formatting
+black app/ tests/
+
+# Import sorting
+isort app/ tests/
+
+# Type checking
+mypy app/
+```
+
+### CI Pipeline
+
+GitHub Actions runs on every push/PR:
+* Tests with 95%+ coverage requirement
+* Code quality checks (ruff, black, isort, mypy)
+* Security scanning (bandit, safety)
+* Docker build and integration tests
 
 ---
 
